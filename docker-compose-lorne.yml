@@ -1,0 +1,25 @@
+services:
+  cli-proxy-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cli-proxy-api-plus:local
+    container_name: cli-proxy-api-plus
+    pull_policy: always
+    # env_file:
+    #   - .env
+    environment:
+      DEPLOY: ${DEPLOY:-}
+    ports:
+      - "8317:8317"
+      - "8085:8085"
+      - "1455:1455"
+      - "54545:54545"
+      - "51121:51121"
+      - "11451:11451"
+    volumes:
+      - ./config.yaml:/CLIProxyAPI/config.yaml
+      - ./auths:/root/.cli-proxy-api
+      - ./logs:/CLIProxyAPI/logs
+      - ./stats:/CLIProxyAPI/stats
+    restart: unless-stopped
