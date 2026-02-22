@@ -5,6 +5,7 @@ package usage
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/persist"
 	coreusage "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/usage"
 )
 
@@ -481,4 +483,71 @@ func formatHour(hour int) string {
 	}
 	hour = hour % 24
 	return fmt.Sprintf("%02d", hour)
+}
+
+// PersistName returns the state file name for persistence.
+func (s *RequestStatistics) PersistName() string {
+	return "usage_statistics"
+}
+
+// PersistSave returns the state to persist.
+func (s *RequestStatistics) PersistSave() (any, error) {
+	return s.Snapshot(), nil
+}
+
+// PersistLoad restores state from persisted data.
+func (s *RequestStatistics) PersistLoad(data any) error {
+	if s == nil || data == nil {
+		return nil
+	}
+
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	var snapshot StatisticsSnapshot
+	if err := json.Unmarshal(raw, &snapshot); err != nil {
+		return err
+	}
+
+	s.MergeSnapshot(snapshot)
+	return nil
+}
+
+// RequestStatisticsProvider adapts RequestStatistics to persist.StateProvider.
+type RequestStatisticsProvider struct {
+	*RequestStatistics
+}
+
+// Name returns the state file name.
+func (p *RequestStatisticsProvider) Name() string {
+	if p == nil || p.RequestStatistics == nil {
+		return "usage_statistics"
+	}
+	return p.PersistName()
+}
+
+// Save returns the state to persist.
+func (p *RequestStatisticsProvider) Save() (any, error) {
+	if p == nil || p.RequestStatistics == nil {
+		return nil, nil
+	}
+	return p.PersistSave()
+}
+
+// Load restores state from persisted data.
+func (p *RequestStatisticsProvider) Load(data any) error {
+	if p == nil || p.RequestStatistics == nil {
+		return nil
+	}
+	return p.PersistLoad(data)
+}
+
+// RegisterPersistenceProvider registers the usage statistics with the global persister.
+func RegisterPersistenceProvider() {
+	stats := GetRequestStatistics()
+	if stats != nil {
+		persist.RegisterGlobalProvider(&RequestStatisticsProvider{stats})
+	}
 }

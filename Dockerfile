@@ -18,7 +18,7 @@ FROM alpine:3.22.0
 
 RUN apk add --no-cache tzdata
 
-RUN mkdir /CLIProxyAPI
+RUN mkdir -p /CLIProxyAPI/stats
 
 COPY --from=builder ./app/CLIProxyAPIPlus /CLIProxyAPI/CLIProxyAPIPlus
 
