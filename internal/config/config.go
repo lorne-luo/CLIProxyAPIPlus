@@ -550,6 +550,11 @@ type OpenAICompatibility struct {
 	// Name is the identifier for this OpenAI compatibility configuration.
 	Name string `yaml:"name" json:"name"`
 
+	// Enabled controls whether this provider is active.
+	// When nil (not specified), defaults to true for backward compatibility.
+	// Set to false to temporarily disable a provider without removing its config.
+	Enabled *bool `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+
 	// Priority controls selection preference when multiple providers or credentials match.
 	// Higher values are preferred; defaults to 0.
 	Priority int `yaml:"priority,omitempty" json:"priority,omitempty"`
@@ -595,6 +600,15 @@ type OpenAICompatibilityModel struct {
 
 func (m OpenAICompatibilityModel) GetName() string  { return m.Name }
 func (m OpenAICompatibilityModel) GetAlias() string { return m.Alias }
+
+// IsEnabled returns true if the provider is enabled.
+// Defaults to true when Enabled is nil (not specified).
+func (o *OpenAICompatibility) IsEnabled() bool {
+	if o.Enabled == nil {
+		return true
+	}
+	return *o.Enabled
+}
 
 // LoadConfig reads a YAML configuration file from the given path,
 // unmarshals it into a Config struct, applies environment variable overrides,

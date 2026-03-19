@@ -8,6 +8,10 @@ import (
 	coreauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
 )
 
+func ptrToBool(b bool) *bool {
+	return &b
+}
+
 func TestNewConfigSynthesizer(t *testing.T) {
 	synth := NewConfigSynthesizer()
 	if synth == nil {
@@ -344,6 +348,36 @@ func TestConfigSynthesizer_OpenAICompat(t *testing.T) {
 				},
 			},
 			wantLen: 1,
+		},
+		{
+			name: "disabled provider skipped",
+			compat: []config.OpenAICompatibility{
+				{
+					Name:    "DisabledProvider",
+					BaseURL: "https://disabled.api.com",
+					Enabled: ptrToBool(false),
+					APIKeyEntries: []config.OpenAICompatibilityAPIKey{
+						{APIKey: "key-1"},
+					},
+				},
+				{
+					Name:    "EnabledProvider",
+					BaseURL: "https://enabled.api.com",
+					Enabled: ptrToBool(true),
+					APIKeyEntries: []config.OpenAICompatibilityAPIKey{
+						{APIKey: "key-2"},
+					},
+				},
+				{
+					Name:    "DefaultProvider",
+					BaseURL: "https://default.api.com",
+					// No Enabled field - should default to enabled
+					APIKeyEntries: []config.OpenAICompatibilityAPIKey{
+						{APIKey: "key-3"},
+					},
+				},
+			},
+			wantLen: 2, // Only EnabledProvider and DefaultProvider
 		},
 	}
 

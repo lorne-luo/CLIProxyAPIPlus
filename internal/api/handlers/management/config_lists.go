@@ -395,6 +395,7 @@ func (h *Handler) PutOpenAICompat(c *gin.Context) {
 func (h *Handler) PatchOpenAICompat(c *gin.Context) {
 	type openAICompatPatch struct {
 		Name          *string                             `json:"name"`
+		Enabled       *bool                               `json:"enabled"`
 		Prefix        *string                             `json:"prefix"`
 		BaseURL       *string                             `json:"base-url"`
 		APIKeyEntries *[]config.OpenAICompatibilityAPIKey `json:"api-key-entries"`
@@ -431,6 +432,9 @@ func (h *Handler) PatchOpenAICompat(c *gin.Context) {
 	entry := h.cfg.OpenAICompatibility[targetIndex]
 	if body.Value.Name != nil {
 		entry.Name = strings.TrimSpace(*body.Value.Name)
+	}
+	if body.Value.Enabled != nil {
+		entry.Enabled = body.Value.Enabled
 	}
 	if body.Value.Prefix != nil {
 		entry.Prefix = strings.TrimSpace(*body.Value.Prefix)
