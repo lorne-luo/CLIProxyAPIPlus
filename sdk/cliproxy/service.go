@@ -14,6 +14,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/api"
 	kiroauth "github.com/router-for-me/CLIProxyAPI/v6/internal/auth/kiro"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/codex"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/runtime/executor"
 	_ "github.com/router-for-me/CLIProxyAPI/v6/internal/usage"
@@ -90,6 +91,9 @@ type Service struct {
 
 	// wsGateway manages websocket Gemini providers.
 	wsGateway *wsrelay.Manager
+
+	codexQuotaMu      sync.Mutex
+	codexQuotaService *codex.CodexQuotaService
 }
 
 // RegisterUsagePlugin registers a usage plugin on the global usage manager.
@@ -330,6 +334,10 @@ func (s *Service) applyCoreAuthAddOrUpdate(ctx context.Context, auth *coreauth.A
 	// have an empty supportedModelSet (because Register/Update upserts into the
 	// scheduler before registerModelsForAuth runs) and are invisible to the scheduler.
 	s.coreManager.RefreshSchedulerEntry(auth.ID)
+
+	if strings.EqualFold(strings.TrimSpace(auth.Provider), "codex") {
+		s.startCodexQuotaService(ctx)
+	}
 }
 
 func (s *Service) applyCoreAuthRemoval(ctx context.Context, id string) {
@@ -359,6 +367,68 @@ func (s *Service) applyRetryConfig(cfg *config.Config) {
 	}
 	maxInterval := time.Duration(cfg.MaxRetryInterval) * time.Second
 	s.coreManager.SetRetryConfig(cfg.RequestRetry, maxInterval, cfg.MaxRetryCredentials)
+}
+
+func (s *Service) hasCodexOAuthAuth() bool {
+	if s == nil || s.coreManager == nil {
+		return false
+	}
+	auths := s.coreManager.List()
+	for _, auth := range auths {
+		if auth == nil {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(auth.Provider), "codex") {
+			continue
+		}
+		if auth.Disabled || auth.Unavailable || auth.Status != coreauth.StatusActive {
+			continue
+		}
+		if auth.Metadata == nil {
+			continue
+		}
+		accessToken, _ := auth.Metadata["access_token"].(string)
+		if strings.TrimSpace(accessToken) == "" {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func (s *Service) startCodexQuotaService(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	s.codexQuotaMu.Lock()
+	defer s.codexQuotaMu.Unlock()
+	if s.codexQuotaService != nil {
+		return
+	}
+	if !s.hasCodexOAuthAuth() {
+		return
+	}
+	s.codexQuotaService = codex.NewCodexQuotaService(
+		s.coreManager,
+		codex.WithKeepAliveInterval(3*time.Hour),
+		codex.WithQuotaCheckInterval(5*time.Hour),
+	)
+	s.codexQuotaService.Start(ctx)
+	log.Info("codex quota service started")
+}
+
+func (s *Service) stopCodexQuotaService() {
+	if s == nil {
+		return
+	}
+	s.codexQuotaMu.Lock()
+	defer s.codexQuotaMu.Unlock()
+	if s.codexQuotaService == nil {
+		return
+	}
+	s.codexQuotaService.Stop()
+	s.codexQuotaService = nil
+	log.Info("codex quota service stopped")
 }
 
 func openAICompatInfoFromAuth(a *coreauth.Auth) (providerKey string, compatName string, ok bool) {
@@ -727,6 +797,8 @@ func (s *Service) Run(ctx context.Context) error {
 		log.Infof("core auth auto-refresh started (interval=%s)", interval)
 	}
 
+	s.startCodexQuotaService(ctx)
+
 	select {
 	case <-ctx.Done():
 		log.Debug("service context cancelled, shutting down...")
@@ -756,6 +828,8 @@ func (s *Service) Shutdown(ctx context.Context) error {
 		}
 
 		// legacy refresh loop removed; only stopping core auth manager below
+
+		s.stopCodexQuotaService()
 
 		if s.watcherCancel != nil {
 			s.watcherCancel()
